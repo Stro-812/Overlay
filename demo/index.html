@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Оверлей забега</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --ink: #16192150; --text: #161921;
+    --muted: #5d6675; --line: #e2e5ec; --accent: #1b3a93;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { display: grid; grid-template-columns: 330px 1fr; gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+  label.file {
+    display: block; border: 1.5px dashed var(--line); border-radius: 9px; padding: 14px;
+    text-align: center; cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px;
+  }
+  label.file:hover, label.file.over { border-color: var(--accent); color: var(--accent); }
+  label.file.ok { border-style: solid; border-color: #2e9e5b; color: #2e9e5b; }
+  label.file input { display: none; }
+  .row { display: grid; grid-template-columns: 1fr 58px; gap: 8px; align-items: center; margin-bottom: 7px; font-size: 13px; }
+  .row input[type=range] { width: 100%; }
+  .row output { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .swatches { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  .swatches input { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
+  button {
+    width: 100%; padding: 11px; border: 0; border-radius: 9px; background: var(--accent);
+    color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { background: #b9c0cf; cursor: default; }
+  button.ghost { background: none; color: var(--accent); border: 1px solid var(--line); font-weight: 500; margin-top: 8px; }
+  .stage {
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+    position: sticky; top: 20px;
+  }
+  .frame {
+    position: relative; border-radius: 9px; overflow: hidden; line-height: 0;
+    background-color: #fff;
+    background-image: linear-gradient(45deg, #dfe2e9 25%, transparent 25%, transparent 75%, #dfe2e9 75%),
+                      linear-gradient(45deg, #dfe2e9 25%, transparent 25%, transparent 75%, #dfe2e9 75%);
+    background-size: 26px 26px; background-position: 0 0, 13px 13px;
+  }
+  .frame img.photo { width: 100%; display: block; }
+  .frame canvas { width: 100%; display: block; }
+  .frame.with-photo canvas { position: absolute; inset: 0; height: 100%; }
+  pre {
+    background: #10131a; color: #dfe4ee; padding: 12px; border-radius: 9px;
+    font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; overflow-x: auto; margin: 0;
+  }
+  .note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+  .err { color: #c2381f; font-size: 13px; margin-top: 8px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>Оверлей забега</h1>
+    <p class="sub">Два JSON — прозрачный PNG поверх фотографии.</p>
+
+    <div class="card">
+      <h2>Данные</h2>
+      <label class="file" data-drop="track">
+        <input type="file" accept=".json,application/json" data-for="track">
+        <span>Трек с координатами</span>
+      </label>
+      <label class="file" data-drop="stats">
+        <input type="file" accept=".json,application/json" data-for="stats">
+        <span>Цифры забега</span>
+      </label>
+      <label class="file" data-drop="photo">
+        <input type="file" accept="image/*" data-for="photo">
+        <span>Фотография — только для примерки</span>
+      </label>
+      <div class="err" id="err" hidden></div>
+    </div>
+
+    <div class="card">
+      <h2>Раскладка</h2>
+      <div class="swatches">
+        <input type="color" id="color" value="#1b3a93"><span>основной</span>
+        <input type="color" id="accent" value="#ff2d20"><span>акцент</span>
+      </div>
+      <div id="sliders"></div>
+    </div>
+
+    <div class="card">
+      <h2>Настройки для кнопки</h2>
+      <pre id="snippet"></pre>
+      <button class="ghost" id="copy">Скопировать</button>
+      <p class="note">Подобрали раскладку — перенесите этот объект в вызов на сайте.</p>
+    </div>
+  </div>
+
+  <div>
+    <div class="stage">
+      <div class="frame" id="frame"><canvas id="canvas"></canvas></div>
+      <p class="note" id="status">Загрузите трек и цифры.</p>
+      <button id="save" disabled>Скачать PNG</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { renderToCanvas, renderOverlay, DEFAULTS } from '../src/overlay.js';
+
+const SLIDERS = [
+  ['stats.x',      'цифры слева',   0,    1,    0.005],
+  ['stats.y',      'цифры сверху',  0,    1,    0.005],
+  ['stats.scale',  'кегль цифр',    0.04, 0.2,  0.002],
+  ['stats.gap',    'шаг строк',     1,    2,    0.01],
+  ['track.x',      'трек слева',    0,    1,    0.005],
+  ['track.y',      'трек сверху',   0,    1,    0.005],
+  ['track.size',   'размер трека',  0.1,  1,    0.005],
+  ['track.weight', 'толщина линии', 0.002, 0.03, 0.001],
+];
+
+const state = { track: null, stats: null, photo: null, opts: structuredClone(DEFAULTS) };
+const $ = (id) => document.getElementById(id);
+const at = (obj, key) => key.split('.').reduce((o, k) => o[k], obj);
+const setAt = (obj, key, v) => {
+  const parts = key.split('.');
+  parts.slice(0, -1).reduce((o, k) => o[k], obj)[parts.at(-1)] = v;
+};
+
+/* ---------- ползунки ---------- */
+
+for (const [key, title, min, max, step] of SLIDERS) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<label>${title}<input type="range" min="${min}" max="${max}" step="${step}"></label><output></output>`;
+  const input = row.querySelector('input');
+  const out = row.querySelector('output');
+  input.value = at(state.opts, key);
+  out.textContent = (+input.value).toFixed(3);
+  input.addEventListener('input', () => {
+    setAt(state.opts, key, +input.value);
+    out.textContent = (+input.value).toFixed(3);
+    draw();
+  });
+  $('sliders').append(row);
+}
+for (const id of ['color', 'accent']) {
+  $(id).addEventListener('input', () => { state.opts[id] = $(id).value; draw(); });
+}
+
+/* ---------- файлы ---------- */
+
+function showError(text) {
+  $('err').hidden = !text;
+  $('err').textContent = text ?? '';
+}
+
+async function take(kind, file) {
+  const label = document.querySelector(`[data-drop="${kind}"]`);
+  try {
+    if (kind === 'photo') {
+      state.photo = URL.createObjectURL(file);
+      // PNG делаем ровно под фотографию: тогда его кладут поверх без подгонки,
+      // и ни одна линия не размывается пересчётом
+      const size = await new Promise((done, fail) => {
+        const img = new Image();
+        img.onload = () => done({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => fail(new Error('не похоже на картинку'));
+        img.src = state.photo;
+      });
+      Object.assign(state.opts, size);
+    } else {
+      const parsed = JSON.parse(await file.text());
+      if (kind === 'stats' && !Array.isArray(parsed) && !Array.isArray(parsed.rows)) {
+        throw new Error('в цифрах нет массива rows');
+      }
+      state[kind] = parsed;
+    }
+    label.classList.add('ok');
+    label.querySelector('span').textContent = file.name;
+    showError('');
+  } catch (e) {
+    label.classList.remove('ok');
+    showError(`${file.name}: ${e.message}`);
+  }
+  draw();
+}
+
+for (const input of document.querySelectorAll('input[type=file]')) {
+  input.addEventListener('change', () => {
+    if (input.files[0]) take(input.dataset.for, input.files[0]);
+  });
+}
+for (const label of document.querySelectorAll('[data-drop]')) {
+  label.addEventListener('dragover', (e) => { e.preventDefault(); label.classList.add('over'); });
+  label.addEventListener('dragleave', () => label.classList.remove('over'));
+  label.addEventListener('drop', (e) => {
+    e.preventDefault();
+    label.classList.remove('over');
+    if (e.dataTransfer.files[0]) take(label.dataset.drop, e.dataTransfer.files[0]);
+  });
+}
+
+/* ---------- отрисовка ---------- */
+
+let pending = null;
+
+async function draw() {
+  snippet();
+  if (!state.stats) {
+    $('save').disabled = true;
+    return;
+  }
+  const frame = $('frame');
+  frame.classList.toggle('with-photo', Boolean(state.photo));
+  let photo = frame.querySelector('img.photo');
+  if (state.photo) {
+    if (!photo) {
+      photo = document.createElement('img');
+      photo.className = 'photo';
+      frame.prepend(photo);
+    }
+    photo.src = state.photo;
+  } else photo?.remove();
+
+  // правка ползунка идёт потоком — рисуем по одному кадру, а не по каждому событию
+  if (pending) return;
+  pending = requestAnimationFrame(async () => {
+    pending = null;
+    try {
+      await renderToCanvas({ track: state.track, stats: state.stats }, state.opts, $('canvas'));
+      $('save').disabled = false;
+      const { width, height } = $('canvas');
+      $('status').textContent = `${width}×${height} · `
+        + (state.track ? 'трек и цифры' : 'только цифры, трека нет');
+    } catch (e) {
+      showError(String(e.message ?? e));
+    }
+  });
+}
+
+function snippet() {
+  const { width, height, color, accent, stats, track } = state.opts;
+  const round = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(3) : v]));
+  $('snippet').textContent = JSON.stringify(
+    { width, height, color, accent, stats: round(stats), track: round(track) },
+    null,
+    2,
+  );
+}
+
+$('copy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('snippet').textContent);
+  $('copy').textContent = 'Скопировано';
+  setTimeout(() => ($('copy').textContent = 'Скопировать'), 1500);
+});
+
+$('save').addEventListener('click', async () => {
+  const blob = await renderOverlay({ track: state.track, stats: state.stats }, state.opts);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'overlay.png';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+});
+
+snippet();
+</script>
+</body>
+</html>

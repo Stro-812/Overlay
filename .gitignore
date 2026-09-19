@@ -1,0 +1,6 @@
+node_modules
+test/out
+
+# Настоящие треки — это GPS живого человека, вплоть до точки старта у дома.
+# В гит не кладём: для прогонов хватает test/fixtures/track.sample.json.
+test/fixtures/track.json

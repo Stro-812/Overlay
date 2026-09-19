@@ -1,0 +1,9 @@
+{
+  "rows": [
+    { "icon": "run",       "value": "21.29", "unit": "km" },
+    { "icon": "stopwatch", "value": "5:07",  "unit": "min/km" },
+    { "icon": "mountain",  "value": "304",   "unit": "m" },
+    { "icon": "heart",     "value": "144",   "unit": "bpm" },
+    { "icon": "metronome", "value": "168",   "unit": "", "accent": true }
+  ]
+}
