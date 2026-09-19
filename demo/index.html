@@ -104,13 +104,18 @@
     <div class="stage">
       <div class="frame" id="frame"><canvas id="canvas"></canvas></div>
       <p class="note" id="status">Загрузите трек и цифры.</p>
-      <button id="save" disabled>Скачать PNG</button>
+      <button id="ready" disabled>Скачать готовую картинку</button>
+      <button class="ghost" id="save" disabled>Скачать прозрачный PNG</button>
+      <p class="note" id="hint">Готовая картинка — фотография с уже наложенным
+      оверлеем: её можно публиковать как есть. Прозрачный PNG нужен, только если
+      накладываете сами в редакторе; по дороге до телефона он легко теряет
+      прозрачность.</p>
     </div>
   </div>
 </div>
 
 <script type="module">
-import { renderToCanvas, renderOverlay, DEFAULTS } from '../src/overlay.js';
+import { renderToCanvas, renderOverlay, renderComposite, DEFAULTS } from '../src/overlay.js';
 
 const SLIDERS = [
   ['stats.x',      'цифры слева',   0,    1,    0.005],
@@ -212,7 +217,7 @@ let pending = null;
 async function draw() {
   snippet();
   if (!state.stats) {
-    $('save').disabled = true;
+    $('save').disabled = $('ready').disabled = true;
     return;
   }
   const frame = $('frame');
@@ -234,6 +239,11 @@ async function draw() {
     try {
       await renderToCanvas({ track: state.track, stats: state.stats }, state.opts, $('canvas'));
       $('save').disabled = false;
+      // готовую картинку собирать не из чего, пока нет фотографии
+      $('ready').disabled = !state.photo;
+      $('ready').textContent = state.photo
+        ? 'Скачать готовую картинку'
+        : 'Загрузите фотографию для готовой картинки';
       const { width, height } = $('canvas');
       $('status').textContent = `${width}×${height} · `
         + (state.track ? 'трек и цифры' : 'только цифры, трека нет');
@@ -259,14 +269,23 @@ $('copy').addEventListener('click', async () => {
   setTimeout(() => ($('copy').textContent = 'Скопировать'), 1500);
 });
 
-$('save').addEventListener('click', async () => {
-  const blob = await renderOverlay({ track: state.track, stats: state.stats }, state.opts);
+function save(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'overlay.png';
+  a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+const data = () => ({ track: state.track, stats: state.stats, photo: state.photo });
+
+$('save').addEventListener('click', async () => {
+  save(await renderOverlay(data(), state.opts), 'overlay.png');
+});
+
+$('ready').addEventListener('click', async () => {
+  save(await renderComposite(data(), state.opts), 'zabeg.jpg');
 });
 
 snippet();

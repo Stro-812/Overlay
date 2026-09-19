@@ -30,6 +30,19 @@ if (photo) await page.setInputFiles('input[data-for=photo]', photo);
 await page.waitForFunction(() => !document.getElementById('save').disabled);
 await page.waitForFunction(() => document.fonts.check('800 100px "Montserrat"'));
 
+// с фотографией должна включаться и кнопка готовой картинки, и она должна
+// действительно отдавать файл — ради этого пути всё и затевалось
+if (photo) {
+  await page.waitForFunction(() => !document.getElementById('ready').disabled);
+  const download = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('#ready'),
+  ]).then(([d]) => d);
+  const saved = path.join(root, 'test/out', download.suggestedFilename());
+  await download.saveAs(saved);
+  console.log('кнопка отдала', download.suggestedFilename());
+}
+
 const status = await page.textContent('#status');
 const error = await page.evaluate(() => {
   const box = document.getElementById('err');

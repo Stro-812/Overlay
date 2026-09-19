@@ -81,7 +81,7 @@ function rowsOf(stats) {
  * @param {OverlayData} data
  * @param {Partial<typeof DEFAULTS>} [options]
  */
-export async function renderToCanvas(data, options, canvas) {
+export async function renderToCanvas(data, options, canvas, { keep = false } = {}) {
   const opts = settings(options, data.stats);
   const rows = rowsOf(data.stats);
   await ensureFont(opts.fontFamily, opts.loadFont);
@@ -96,10 +96,13 @@ export async function renderToCanvas(data, options, canvas) {
     ? Math.ceil(width * opts.stats.y * 2 + rowHeight * rows.length)
     : opts.height;
 
-  canvas.width = width;
-  canvas.height = height;
+  // выставление размера само очищает канву, поэтому при keep его не трогаем
+  if (!keep) {
+    canvas.width = width;
+    canvas.height = height;
+  }
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, width, height);
+  if (!keep) ctx.clearRect(0, 0, width, height);
   ctx.textBaseline = 'alphabetic';
 
   /* ---------- контур маршрута ---------- */
@@ -176,9 +179,55 @@ export async function renderOverlay(data, options) {
   });
 }
 
-/** То, что вешается на кнопку: собрать и сразу отдать файлом. */
-export async function downloadOverlay(data, options, filename = 'overlay.png') {
-  const blob = await renderOverlay(data, options);
+/** Приводит фотографию к тому, что умеет рисовать канва. */
+async function loadPhoto(photo) {
+  if (typeof photo === 'string') {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';   // иначе канва «пачкается» и toBlob откажет
+    img.src = photo;
+    await img.decode();
+    return img;
+  }
+  if (photo instanceof Blob) return createImageBitmap(photo);
+  return photo;                       // уже <img>, <canvas> или ImageBitmap
+}
+
+/**
+ * Собирает фотографию вместе с оверлеем в одну непрозрачную картинку.
+ *
+ * Это надёжный путь до соцсетей. Прозрачный PNG по дороге теряет альфу:
+ * телефон и приложения охотно пережимают его в JPEG, а просмотрщики
+ * подкладывают под прозрачность шахматку, и в ленту уезжает она. Здесь
+ * накладывать нечего — всё уже наложено.
+ *
+ * Размер берётся у фотографии, поэтому раскладка в долях ширины ложится
+ * на неё как есть.
+ */
+export async function renderComposite(data, options = {}) {
+  const image = await loadPhoto(data.photo);
+  const width = options.width ?? image.naturalWidth ?? image.width;
+  const height = options.height ?? image.naturalHeight ?? image.height;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d').drawImage(image, 0, 0, width, height);
+
+  // оверлей рисуем поверх на той же канве: своей она её не очищает,
+  // потому что размеры уже выставлены
+  await renderToCanvas(data, { ...options, width, height }, canvas, { keep: true });
+
+  const type = options.format ?? 'image/jpeg';
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('браузер не отдал картинку'))),
+      type,
+      options.quality ?? 0.92,
+    );
+  });
+}
+
+function save(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -186,5 +235,18 @@ export async function downloadOverlay(data, options, filename = 'overlay.png') {
   a.click();
   // отзываем не сразу: Safari успевает потерять ссылку до начала скачивания
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Кнопка «картинка для соцсетей»: фотография с оверлеем, одним файлом. */
+export async function downloadComposite(data, options, filename = 'zabeg.jpg') {
+  const blob = await renderComposite(data, options);
+  save(blob, filename);
+  return blob;
+}
+
+/** Кнопка «прозрачный PNG»: для тех, кто накладывает сам в редакторе. */
+export async function downloadOverlay(data, options, filename = 'overlay.png') {
+  const blob = await renderOverlay(data, options);
+  save(blob, filename);
   return blob;
 }

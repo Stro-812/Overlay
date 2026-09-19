@@ -19,7 +19,7 @@ const TYPES = {
 /** @returns {{ browser, page, problems: string[], close: () => Promise<void> }} */
 export async function open(root, { entry = null, viewport } = {}) {
   const browser = await chromium.launch();
-  const page = await browser.newPage(viewport ? { viewport } : {});
+  const page = await browser.newPage({ acceptDownloads: true, ...(viewport ? { viewport } : {}) });
 
   const problems = [];
   page.on('pageerror', (e) => problems.push(String(e)));
