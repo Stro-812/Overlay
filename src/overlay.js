@@ -18,7 +18,7 @@
 import { trackPath } from './track.js';
 import { drawIcon } from './icons.js';
 import { drawIntervals } from './intervals.js';
-import { drawLogo, sampleBackdrop } from './logo.js';
+import { drawLogo, logoRect, sampleBackdrop } from './logo.js';
 
 /** @typedef {{ icon?: string, value: string|number, unit?: string, accent?: boolean, show?: boolean }} Row */
 /** @typedef {{ track?: unknown, stats: { rows: Row[] } | Row[] }} OverlayData */
@@ -131,9 +131,9 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
   if (!keep) ctx.clearRect(0, 0, width, height);
   ctx.textBaseline = 'alphabetic';
 
-  // яркость подложки снимаем до отрисовки: знак должен спорить с фотографией,
-  // а не с цифрами, которые мы сами на неё сейчас положим
-  const backdrop = sampleBackdrop(ctx, width, height, opts.logo.safe);
+  // яркость снимаем под самим знаком и до отрисовки: он должен спорить с
+  // фотографией, а не с цифрами, которые мы сами на неё сейчас положим
+  const backdrop = sampleBackdrop(ctx, logoRect(width, height, opts.logo), { width, height });
 
   /* ---------- контур маршрута ---------- */
 
@@ -241,12 +241,19 @@ async function loadPhoto(photo) {
  * Размер берётся у фотографии, поэтому раскладка в долях ширины ложится
  * на неё как есть.
  */
-export async function renderComposite(data, options = {}) {
+/**
+ * Кладёт фотографию на переданную канву и рисует поверх оверлей.
+ *
+ * Тем же путём идёт и предпросмотр на странице подбора. Раньше он показывал
+ * снимок отдельной картинкой под прозрачной канвой — и врал: яркость под
+ * знаком измерять было не по чему, знак всегда выходил цветным, а верный
+ * вариант появлялся только в скачанном файле.
+ */
+export async function composeToCanvas(data, options, canvas) {
   const image = await loadPhoto(data.photo);
   const width = options.width ?? image.naturalWidth ?? image.width;
   const height = options.height ?? image.naturalHeight ?? image.height;
 
-  const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   canvas.getContext('2d').drawImage(image, 0, 0, width, height);
@@ -254,7 +261,11 @@ export async function renderComposite(data, options = {}) {
   // оверлей рисуем поверх на той же канве: своей она её не очищает,
   // потому что размеры уже выставлены
   await renderToCanvas(data, { ...options, width, height }, canvas, { keep: true });
+  return canvas;
+}
 
+export async function renderComposite(data, options = {}) {
+  const canvas = await composeToCanvas(data, options, document.createElement('canvas'));
   const type = options.format ?? 'image/jpeg';
   return new Promise((resolve, reject) => {
     canvas.toBlob(

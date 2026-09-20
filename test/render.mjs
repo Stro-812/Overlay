@@ -132,7 +132,7 @@ const knobs = await page.evaluate(async ({ track, stats }) => {
 
 const extra = await page.evaluate(async ({ intervals, stats }) => {
   const { renderToCanvas } = await import('/src/overlay.js');
-  const { safeRect, drawLogo, sampleBackdrop, SAFE } = await import('/src/logo.js');
+  const { safeRect, drawLogo, logoRect, sampleBackdrop, SAFE } = await import('/src/logo.js');
 
   const ink = async (data, options) => {
     const canvas = document.createElement('canvas');
@@ -165,18 +165,28 @@ const extra = await page.evaluate(async ({ intervals, stats }) => {
     ].every(Boolean));
   }
   // вариант знака выбирает подложка: на тёмной — белый, на светлой — цветной
-  const onBackdrop = async (fill) => {
+  const onBackdrop = async (paint, logo = { x: 1, y: 0, size: 0.16 }) => {
     const canvas = document.createElement('canvas');
     canvas.width = 1080; canvas.height = 1350;
     const c = canvas.getContext('2d');
-    if (fill) { c.fillStyle = fill; c.fillRect(0, 0, 1080, 1350); }
-    const backdrop = sampleBackdrop(c, 1080, 1350, SAFE);
-    const spot = await drawLogo(c, { width: 1080, height: 1350, logo: { x: 1, y: 0, size: 0.16 }, backdrop });
+    if (paint) paint(c);
+    const backdrop = sampleBackdrop(c, logoRect(1080, 1350, logo), { width: 1080, height: 1350 });
+    const spot = await drawLogo(c, { width: 1080, height: 1350, logo, backdrop });
     return { white: spot.white, luma: +backdrop.luma.toFixed(2), coverage: +backdrop.coverage.toFixed(2) };
   };
-  const dark = await onBackdrop('#101418');
-  const light = await onBackdrop('#f2f4f8');
+  const flat = (fill) => (c) => { c.fillStyle = fill; c.fillRect(0, 0, 1080, 1350); };
+  const dark = await onBackdrop(flat('#101418'));
+  const light = await onBackdrop(flat('#f2f4f8'));
   const none = await onBackdrop(null);
+
+  // ради этого замер и переехал под знак: верх кадра тёмный, низ светлый.
+  // По среднему всей зоны вышло бы серединное значение на оба угла
+  const split = (c) => {
+    c.fillStyle = '#12161c'; c.fillRect(0, 0, 1080, 675);
+    c.fillStyle = '#eef1f6'; c.fillRect(0, 675, 1080, 675);
+  };
+  const splitTop = await onBackdrop(split, { x: 1, y: 0, size: 0.16 });
+  const splitBottom = await onBackdrop(split, { x: 1, y: 1, size: 0.16 });
 
   // знак обязателен: без всяких настроек он всё равно на картинке
   const bare = document.createElement('canvas');
@@ -186,7 +196,7 @@ const extra = await page.evaluate(async ({ intervals, stats }) => {
   for (let i = 3; i < corner.length; i += 4) if (corner[i] > 0) logoInk++;
 
   return { auto, forced, onlyIntervals, onlyStats, вЗоне: corners.every(Boolean),
-           dark, light, none, logoInk };
+           dark, light, none, splitTop, splitBottom, logoInk };
 }, { intervals, stats });
 
 console.log(`интервалы: сами ${extra.auto} точек, принудительно цифры ${extra.forced}`);
@@ -194,6 +204,8 @@ console.log(`знак внутри безопасной зоны во всех �
 console.log(`вариант знака: тёмная подложка → ${extra.dark.white ? 'белый' : 'цветной'}`
   + ` (яркость ${extra.dark.luma}), светлая → ${extra.light.white ? 'белый' : 'цветной'}`
   + ` (яркость ${extra.light.luma}), без подложки → ${extra.none.white ? 'белый' : 'цветной'}`);
+console.log(`кадр «тёмный верх, светлый низ»: сверху → ${extra.splitTop.white ? 'белый' : 'цветной'}`
+  + ` (${extra.splitTop.luma}), снизу → ${extra.splitBottom.white ? 'белый' : 'цветной'} (${extra.splitBottom.luma})`);
 
 console.log(`поворот: ${knobs.upright.join('×')} → ${knobs.turned.join('×')} при 90°`);
 console.log(`строки: все ${knobs.all.height}px, со скрытой ${knobs.hidden.height}px`);
@@ -246,5 +258,7 @@ if (check) {
   if (extra.none.white) fail('без подложки знак должен быть цветным');
   if (extra.none.coverage > 0.05) fail('пустая канва посчиталась непрозрачной');
   if (!extra.logoInk) fail('знак не нарисовался без настроек — он обязателен');
+  if (!extra.splitTop.white) fail('в тёмном верху кадра знак остался цветным');
+  if (extra.splitBottom.white) fail('в светлом низу кадра знак стал белым');
   if (!process.exitCode) console.log('проверки прошли');
 }

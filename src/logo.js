@@ -59,18 +59,40 @@ function logoImage(white) {
 }
 
 /**
- * Средняя яркость того, что лежит в безопасной зоне, и доля непрозрачного.
+ * Куда именно ляжет знак.
+ *
+ * `x` и `y` — доли не от всей картинки, а от свободного хода внутри
+ * безопасной зоны: 0 прижимает к её краю, 1 — к противоположному. Поэтому
+ * знак не может выехать под интерфейс, куда ни двигай.
+ */
+export function logoRect(width, height, logo) {
+  const box = safeRect(width, height, logo.safe ?? SAFE);
+  const side = width * logo.size;
+  return {
+    x: box.x + (box.width - side) * Math.min(1, Math.max(0, logo.x)),
+    y: box.y + (box.height - side) * Math.min(1, Math.max(0, logo.y)),
+    side,
+  };
+}
+
+/**
+ * Средняя яркость того, что лежит прямо под знаком, и доля непрозрачного.
+ *
+ * Меряем именно под ним, а не по всей безопасной зоне: на кадре с тёмным
+ * верхом и светлым низом среднее по зоне выходит серединным, и знак в
+ * тёмном углу остался бы цветным. Берём с небольшим запасом по краям —
+ * важно и то, что знак задевает боком.
  *
  * Считается до отрисовки цифр: знак должен спорить с фотографией, а не с
  * тем, что мы сами только что на неё положили. У прозрачного PNG подложки
  * нет вовсе — тогда `coverage` близка к нулю и выбирать не из чего.
  */
-export function sampleBackdrop(ctx, width, height, safe = SAFE) {
-  const box = safeRect(width, height, safe);
-  const x = Math.max(0, Math.floor(box.x));
-  const y = Math.max(0, Math.floor(box.y));
-  const w = Math.min(width - x, Math.floor(box.width));
-  const h = Math.min(height - y, Math.floor(box.height));
+export function sampleBackdrop(ctx, rect, limit) {
+  const pad = rect.side * 0.08;
+  const x = Math.max(0, Math.floor(rect.x - pad));
+  const y = Math.max(0, Math.floor(rect.y - pad));
+  const w = Math.min(limit.width - x, Math.ceil(rect.side + pad * 2));
+  const h = Math.min(limit.height - y, Math.ceil(rect.side + pad * 2));
   if (w < 2 || h < 2) return { luma: 1, coverage: 0 };
 
   let px;
@@ -81,8 +103,8 @@ export function sampleBackdrop(ctx, width, height, safe = SAFE) {
     return { luma: 1, coverage: 0 };
   }
 
-  // шаг подбираем так, чтобы проб было около четырёх тысяч при любом размере
-  const step = Math.max(1, Math.round(Math.sqrt((w * h) / 4000)));
+  // шаг подбираем так, чтобы проб было около двух тысяч при любом размере
+  const step = Math.max(1, Math.round(Math.sqrt((w * h) / 2000)));
   let sum = 0;
   let opaque = 0;
   let total = 0;
@@ -99,13 +121,7 @@ export function sampleBackdrop(ctx, width, height, safe = SAFE) {
   return { luma: opaque ? sum / opaque : 1, coverage: total ? opaque / total : 0 };
 }
 
-/**
- * Рисует знак внутри безопасной зоны.
- *
- * `x` и `y` — доли не от всей картинки, а от свободного хода внутри зоны:
- * 0 прижимает к её краю, 1 — к противоположному. Поэтому знак не может
- * выехать под интерфейс, куда ни двигай.
- */
+/** Рисует знак внутри безопасной зоны — место считает `logoRect`. */
 export async function drawLogo(ctx, { width, height, logo, backdrop }) {
   // На тёмной подложке цветной знак тонет — там ставится белый. Выбирает
   // это подложка, а не человек: иначе на половине снимков знак пропадёт.
@@ -113,10 +129,7 @@ export async function drawLogo(ctx, { width, height, logo, backdrop }) {
   const white = (backdrop?.coverage ?? 0) > 0.5
     && (backdrop?.luma ?? 1) < (logo.threshold ?? 0.5);
   const img = await logoImage(white);
-  const box = safeRect(width, height, logo.safe ?? SAFE);
-  const side = width * logo.size;
-  const x = box.x + (box.width - side) * Math.min(1, Math.max(0, logo.x));
-  const y = box.y + (box.height - side) * Math.min(1, Math.max(0, logo.y));
+  const { x, y, side } = logoRect(width, height, logo);
 
   ctx.save();
   ctx.globalAlpha = logo.opacity ?? 1;

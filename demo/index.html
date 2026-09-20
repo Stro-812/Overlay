@@ -56,9 +56,7 @@
                       linear-gradient(45deg, #dfe2e9 25%, transparent 25%, transparent 75%, #dfe2e9 75%);
     background-size: 26px 26px; background-position: 0 0, 13px 13px;
   }
-  .frame img.photo { width: 100%; display: block; }
   .frame canvas { width: 100%; display: block; }
-  .frame.with-photo canvas { position: absolute; inset: 0; height: 100%; }
   pre {
     background: #10131a; color: #dfe4ee; padding: 12px; border-radius: 9px;
     font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; overflow-x: auto; margin: 0;
@@ -146,7 +144,7 @@
 </div>
 
 <script type="module">
-import { renderToCanvas, renderOverlay, renderComposite, DEFAULTS } from '../src/overlay.js';
+import { renderToCanvas, renderOverlay, renderComposite, composeToCanvas, DEFAULTS } from '../src/overlay.js';
 import { columnsOf } from '../src/intervals.js';
 import { SAFE } from '../src/logo.js';
 
@@ -334,24 +332,17 @@ async function draw() {
     $('save').disabled = $('ready').disabled = true;
     return;
   }
-  const frame = $('frame');
-  frame.classList.toggle('with-photo', Boolean(state.photo));
-  let photo = frame.querySelector('img.photo');
-  if (state.photo) {
-    if (!photo) {
-      photo = document.createElement('img');
-      photo.className = 'photo';
-      frame.prepend(photo);
-    }
-    photo.src = state.photo;
-  } else photo?.remove();
+  $('frame').classList.toggle('with-photo', Boolean(state.photo));
 
   // правка ползунка идёт потоком — рисуем по одному кадру, а не по каждому событию
   if (pending) return;
   pending = requestAnimationFrame(async () => {
     pending = null;
     try {
-      await renderToCanvas({ track: state.track, stats: state.stats }, state.opts, $('canvas'));
+      // со снимком рисуем ровно то, что уйдёт в файл: иначе знак не сможет
+      // подобрать себе цвет по фотографии, которой на канве нет
+      if (state.photo) await composeToCanvas(data(), state.opts, $('canvas'));
+      else await renderToCanvas(data(), state.opts, $('canvas'));
       $('save').disabled = false;
       // готовую картинку собирать не из чего, пока нет фотографии
       $('ready').disabled = !state.photo;
