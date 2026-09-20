@@ -89,6 +89,46 @@ const composite = await page.evaluate(async ({ track, stats }) => {
 }, { track, stats });
 
 await writeFile(path.join(out, 'composite.png'), Buffer.from(composite.png, 'base64'));
+
+/* ---------- поворот маршрута и выбор строк ---------- */
+
+const knobs = await page.evaluate(async ({ track, stats }) => {
+  const { trackPath } = await import('/src/track.js');
+  const { renderToCanvas } = await import('/src/overlay.js');
+
+  const box = { width: 600, height: 600 };
+  const upright = trackPath(track, box);
+  const turned = trackPath(track, box, { rotate: 90 });
+  const full = trackPath(track, box, { rotate: 360 });
+
+  // сколько строк рисуется при разном составе
+  const ink = async (rows) => {
+    const canvas = document.createElement('canvas');
+    await renderToCanvas({ stats: { rows } }, { height: 'auto', track: { show: false } }, canvas);
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let on = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) on++;
+    return { on, height: canvas.height };
+  };
+
+  const all = await ink(stats.rows);
+  const hidden = await ink(stats.rows.map((r, i) => (i === 1 ? { ...r, show: false } : r)));
+  const empty = await ink(stats.rows.map((r, i) => (i === 1 ? { ...r, value: '' } : r)));
+
+  return {
+    // поворот на 90° меняет местами стороны описанного прямоугольника
+    upright: [Math.round(upright.width), Math.round(upright.height)],
+    turned: [Math.round(turned.width), Math.round(turned.height)],
+    // полный оборот обязан вернуть ровно то же самое
+    fullCircle: Math.abs(full.width - upright.width) < 1 && Math.abs(full.height - upright.height) < 1,
+    all,
+    hidden,
+    empty,
+  };
+}, { track, stats });
+
+console.log(`поворот: ${knobs.upright.join('×')} → ${knobs.turned.join('×')} при 90°`);
+console.log(`строки: все ${knobs.all.height}px, со скрытой ${knobs.hidden.height}px`);
 console.log(`test/out/composite.png — ${composite.width}×${composite.height}, `
   + `просвечивает пикселей: ${composite.seeThrough}`);
 
@@ -120,5 +160,13 @@ if (check) {
   if (composite.width !== 1200 || composite.height !== 1500) fail('размер не взят у фотографии');
   if (composite.seeThrough !== 0) fail(`в готовой картинке ${composite.seeThrough} просвечивающих пикселей`);
   if (composite.corner[3] !== 255) fail('угол готовой картинки не залит — фотография не подложилась');
+
+  const [w, h] = knobs.upright;
+  const [tw, th] = knobs.turned;
+  if (Math.abs(tw - h) > 2 || Math.abs(th - w) > 2) fail('поворот на 90° не поменял стороны местами');
+  if (!knobs.fullCircle) fail('полный оборот сдвинул маршрут');
+  if (knobs.hidden.height >= knobs.all.height) fail('show: false не убрал строку');
+  if (knobs.hidden.on >= knobs.all.on) fail('скрытая строка всё равно нарисовалась');
+  if (knobs.empty.height !== knobs.hidden.height) fail('пустое значение и show: false убирают строку по-разному');
   if (!process.exitCode) console.log('проверки прошли');
 }

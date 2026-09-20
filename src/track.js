@@ -60,18 +60,43 @@ function simplify(points, tolerance) {
 }
 
 /**
+ * Поворачивает облако точек вокруг его середины.
+ *
+ * Север у маршрута сверху не потому, что так правильно, а потому, что так
+ * его отдаёт прибор. На фотографии же важно другое: чтобы контур лёг в
+ * свободное место и не спорил с тем, что на снимке. Поэтому поворот —
+ * обычная настройка раскладки, наравне с размером.
+ */
+function rotatePoints(flat, degrees) {
+  const angle = (degrees * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const cx = (Math.min(...flat.map((p) => p[0])) + Math.max(...flat.map((p) => p[0]))) / 2;
+  const cy = (Math.min(...flat.map((p) => p[1])) + Math.max(...flat.map((p) => p[1]))) / 2;
+  return flat.map(([x, y]) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  });
+}
+
+/**
  * Укладывает трек в прямоугольник, сохраняя пропорции: форма маршрута
  * не должна растягиваться под рамку, иначе он перестаёт быть узнаваемым.
  *
+ * Поворот применяется до подгонки под рамку, поэтому повёрнутый маршрут
+ * занимает её так же плотно, как и неповёрнутый.
+ *
  * @returns {{path: Path2D, width: number, height: number} | null}
  */
-export function trackPath(track, box) {
+export function trackPath(track, box, { rotate = 0 } = {}) {
   const points = readPoints(track);
   if (points.length < 2) return null;
 
   const lat0 = points.reduce((sum, p) => sum + p[1], 0) / points.length;
   const kx = Math.cos((lat0 * Math.PI) / 180);
-  const flat = points.map(([lon, lat]) => [lon * kx, -lat]);
+  let flat = points.map(([lon, lat]) => [lon * kx, -lat]);
+  if (rotate % 360) flat = rotatePoints(flat, rotate);
 
   const xs = flat.map((p) => p[0]);
   const ys = flat.map((p) => p[1]);

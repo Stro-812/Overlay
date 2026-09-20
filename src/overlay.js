@@ -18,7 +18,7 @@
 import { trackPath } from './track.js';
 import { drawIcon } from './icons.js';
 
-/** @typedef {{ icon?: string, value: string|number, unit?: string, accent?: boolean }} Row */
+/** @typedef {{ icon?: string, value: string|number, unit?: string, accent?: boolean, show?: boolean }} Row */
 /** @typedef {{ track?: unknown, stats: { rows: Row[] } | Row[] }} OverlayData */
 
 export const DEFAULTS = {
@@ -31,7 +31,7 @@ export const DEFAULTS = {
   /** раскладка столбика цифр; доли — от ширины картинки */
   stats: { x: 0.06, y: 0.08, scale: 0.1, gap: 1.32 },
   /** раскладка контура маршрута */
-  track: { show: true, x: 0.34, y: 0.3, size: 0.62, accent: true, weight: 0.009, opacity: 1 },
+  track: { show: true, x: 0.34, y: 0.3, size: 0.62, rotate: 0, accent: true, weight: 0.009, opacity: 1 },
 };
 
 const GOOGLE_FONT = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap';
@@ -71,9 +71,14 @@ function metrics(unit) {
   return { value: unit, label: unit * 0.4, icon: unit * 0.92, iconGap: unit * 0.3, labelGap: unit * 0.14 };
 }
 
+/**
+ * Какие строки рисовать. Убрать метрику можно двумя способами: выключить
+ * её через `show: false` или оставить пустое значение. Второе удобно, когда
+ * JSON собирается шаблоном и вырезать поле неоткуда.
+ */
 function rowsOf(stats) {
   const rows = Array.isArray(stats) ? stats : stats?.rows ?? [];
-  return rows.filter((row) => row && row.value != null && row.value !== '');
+  return rows.filter((row) => row && row.show !== false && row.value != null && row.value !== '');
 }
 
 /**
@@ -109,7 +114,7 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
 
   if (opts.track.show && data.track) {
     const side = width * opts.track.size;
-    const fitted = trackPath(data.track, { width: side, height: side });
+    const fitted = trackPath(data.track, { width: side, height: side }, { rotate: opts.track.rotate });
     if (fitted) {
       ctx.save();
       ctx.globalAlpha = opts.track.opacity;

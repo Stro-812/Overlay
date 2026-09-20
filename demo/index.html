@@ -30,6 +30,11 @@
   .row { display: grid; grid-template-columns: 1fr 58px; gap: 8px; align-items: center; margin-bottom: 7px; font-size: 13px; }
   .row input[type=range] { width: 100%; }
   .row output { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .toggles { display: grid; gap: 6px; }
+  .toggles label { display: flex; gap: 9px; align-items: center; font-size: 13px; cursor: pointer; }
+  .toggles label.off { color: var(--muted); }
+  .toggles input { accent-color: var(--accent); }
+  .toggles .none { color: var(--muted); font-size: 13px; }
   .swatches { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 13px; }
   .swatches input { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
   button {
@@ -84,6 +89,11 @@
     </div>
 
     <div class="card">
+      <h2>Строки</h2>
+      <div class="toggles" id="rows"></div>
+    </div>
+
+    <div class="card">
       <h2>Раскладка</h2>
       <div class="swatches">
         <input type="color" id="color" value="#1b3a93"><span>основной</span>
@@ -125,8 +135,12 @@ const SLIDERS = [
   ['track.x',      'трек слева',    0,    1,    0.005],
   ['track.y',      'трек сверху',   0,    1,    0.005],
   ['track.size',   'размер трека',  0.1,  1,    0.005],
+  ['track.rotate', 'поворот',       0,    360,  1,    '°'],
   ['track.weight', 'толщина линии', 0.002, 0.03, 0.001],
 ];
+
+/** Доли показываем с точностью до тысячных, градусы — целыми. */
+const show = (value, unit) => (unit ? Math.round(value) + unit : (+value).toFixed(3));
 
 const state = { track: null, stats: null, photo: null, opts: structuredClone(DEFAULTS) };
 const $ = (id) => document.getElementById(id);
@@ -138,20 +152,52 @@ const setAt = (obj, key, v) => {
 
 /* ---------- ползунки ---------- */
 
-for (const [key, title, min, max, step] of SLIDERS) {
+for (const [key, title, min, max, step, unit] of SLIDERS) {
   const row = document.createElement('div');
   row.className = 'row';
   row.innerHTML = `<label>${title}<input type="range" min="${min}" max="${max}" step="${step}"></label><output></output>`;
   const input = row.querySelector('input');
   const out = row.querySelector('output');
   input.value = at(state.opts, key);
-  out.textContent = (+input.value).toFixed(3);
+  out.textContent = show(input.value, unit);
   input.addEventListener('input', () => {
     setAt(state.opts, key, +input.value);
-    out.textContent = (+input.value).toFixed(3);
+    out.textContent = show(input.value, unit);
     draw();
   });
   $('sliders').append(row);
+}
+
+/* ---------- какие строки рисовать ---------- */
+
+function renderRows() {
+  const box = $('rows');
+  const rows = Array.isArray(state.stats) ? state.stats : state.stats?.rows ?? [];
+  box.replaceChildren();
+  if (!rows.length) {
+    box.innerHTML = '<p class="none">Загрузите цифры забега.</p>';
+    return;
+  }
+  rows.forEach((row) => {
+    const label = document.createElement('label');
+    const box2 = document.createElement('input');
+    box2.type = 'checkbox';
+    box2.checked = row.show !== false;
+    // строке без значения рисоваться нечем — не делаем вид, что её можно включить
+    box2.disabled = row.value == null || row.value === '';
+    const text = document.createElement('span');
+    text.textContent = box2.disabled
+      ? `${row.icon ?? 'строка'} — пусто`
+      : `${row.value}${row.unit ? ' ' + row.unit : ''}`;
+    label.classList.toggle('off', !box2.checked || box2.disabled);
+    label.append(box2, text);
+    box2.addEventListener('change', () => {
+      row.show = box2.checked;
+      label.classList.toggle('off', !box2.checked);
+      draw();
+    });
+    box.append(label);
+  });
 }
 for (const id of ['color', 'accent']) {
   $(id).addEventListener('input', () => { state.opts[id] = $(id).value; draw(); });
@@ -184,6 +230,7 @@ async function take(kind, file) {
         throw new Error('в цифрах нет массива rows');
       }
       state[kind] = parsed;
+      if (kind === 'stats') renderRows();
     }
     label.classList.add('ok');
     label.querySelector('span').textContent = file.name;
@@ -288,6 +335,7 @@ $('ready').addEventListener('click', async () => {
   save(await renderComposite(data(), state.opts), 'zabeg.jpg');
 });
 
+renderRows();
 snippet();
 </script>
 </body>
