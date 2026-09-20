@@ -29,7 +29,7 @@ await page.setInputFiles('input[data-for=intervals]', path.join(root, 'test/fixt
 // второй JSON поднимает переключатель и по умолчанию выбирает интервалы
 await page.waitForFunction(() => !document.getElementById('modeCard').hidden);
 const chosen = await page.textContent('#modeCard button.on');
-await page.locator('#showLogo').check();
+
 if (photo) await page.setInputFiles('input[data-for=photo]', photo);
 
 await page.waitForFunction(() => !document.getElementById('save').disabled);

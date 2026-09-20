@@ -18,7 +18,7 @@
 import { trackPath } from './track.js';
 import { drawIcon } from './icons.js';
 import { drawIntervals } from './intervals.js';
-import { drawLogo } from './logo.js';
+import { drawLogo, sampleBackdrop } from './logo.js';
 
 /** @typedef {{ icon?: string, value: string|number, unit?: string, accent?: boolean, show?: boolean }} Row */
 /** @typedef {{ track?: unknown, stats: { rows: Row[] } | Row[] }} OverlayData */
@@ -45,9 +45,10 @@ export const DEFAULTS = {
     colGap: 0.045, rowGap: 0.38, headGap: 1.5,
     labelMax: 0.24, ink: '#111111',
   },
-  /** знак: x и y — доли свободного хода внутри безопасной зоны соцсетей.
-   *  По умолчанию правый верхний угол — там свободно при любой раскладке цифр */
-  logo: { show: false, x: 1, y: 0, size: 0.16, opacity: 1 },
+  /** Знак ставится всегда. x и y — доли свободного хода внутри безопасной
+   *  зоны соцсетей; по умолчанию правый верхний угол — там свободно при
+   *  любой раскладке цифр. Цветной или белый решает подложка, не настройка */
+  logo: { x: 1, y: 0, size: 0.16, opacity: 1, threshold: 0.5 },
 };
 
 const GOOGLE_FONT = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap';
@@ -130,6 +131,10 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
   if (!keep) ctx.clearRect(0, 0, width, height);
   ctx.textBaseline = 'alphabetic';
 
+  // яркость подложки снимаем до отрисовки: знак должен спорить с фотографией,
+  // а не с цифрами, которые мы сами на неё сейчас положим
+  const backdrop = sampleBackdrop(ctx, width, height, opts.logo.safe);
+
   /* ---------- контур маршрута ---------- */
 
   if (opts.track.show && data.track) {
@@ -158,7 +163,7 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
   const mode = opts.mode ?? (data.intervals ? 'intervals' : 'stats');
   if (mode === 'intervals' && data.intervals) {
     drawIntervals(ctx, data.intervals, { ...opts, width, height });
-    await drawLogo(ctx, { width, height, logo: opts.logo });
+    await drawLogo(ctx, { width, height, logo: opts.logo, backdrop });
     return canvas;
   }
 
@@ -191,7 +196,7 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
     y += rowHeight;
   }
 
-  await drawLogo(ctx, { width, height, logo: opts.logo });
+  await drawLogo(ctx, { width, height, logo: opts.logo, backdrop });
   return canvas;
 }
 

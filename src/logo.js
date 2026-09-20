@@ -39,19 +39,64 @@ export function safeRect(width, height, safe = SAFE) {
   };
 }
 
-let loading = null;
+/** Белый вариант — тот же знак, у которого обе заливки заменены на белую. */
+const WHITE_SVG = LOGO_SVG.replace(/fill="#[0-9a-fA-F]{6}"/g, 'fill="#ffffff"');
+
+const loading = new Map();
 
 /** Картинка знака готовится один раз: при перетаскивании кадры идут потоком. */
-function logoImage() {
-  if (!loading) {
-    loading = new Promise((done, fail) => {
+function logoImage(white) {
+  const key = white ? 'white' : 'colour';
+  if (!loading.has(key)) {
+    loading.set(key, new Promise((done, fail) => {
       const img = new Image();
       img.onload = () => done(img);
       img.onerror = () => fail(new Error('знак не разобрался'));
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(LOGO_SVG);
-    });
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(white ? WHITE_SVG : LOGO_SVG);
+    }));
   }
-  return loading;
+  return loading.get(key);
+}
+
+/**
+ * Средняя яркость того, что лежит в безопасной зоне, и доля непрозрачного.
+ *
+ * Считается до отрисовки цифр: знак должен спорить с фотографией, а не с
+ * тем, что мы сами только что на неё положили. У прозрачного PNG подложки
+ * нет вовсе — тогда `coverage` близка к нулю и выбирать не из чего.
+ */
+export function sampleBackdrop(ctx, width, height, safe = SAFE) {
+  const box = safeRect(width, height, safe);
+  const x = Math.max(0, Math.floor(box.x));
+  const y = Math.max(0, Math.floor(box.y));
+  const w = Math.min(width - x, Math.floor(box.width));
+  const h = Math.min(height - y, Math.floor(box.height));
+  if (w < 2 || h < 2) return { luma: 1, coverage: 0 };
+
+  let px;
+  try {
+    px = ctx.getImageData(x, y, w, h).data;
+  } catch {
+    // канва «запачкана» чужим доменом — читать её нельзя, знак оставляем цветным
+    return { luma: 1, coverage: 0 };
+  }
+
+  // шаг подбираем так, чтобы проб было около четырёх тысяч при любом размере
+  const step = Math.max(1, Math.round(Math.sqrt((w * h) / 4000)));
+  let sum = 0;
+  let opaque = 0;
+  let total = 0;
+  for (let j = 0; j < h; j += step) {
+    for (let i = 0; i < w; i += step) {
+      const o = (j * w + i) * 4;
+      total++;
+      if (px[o + 3] < 128) continue;
+      opaque++;
+      // яркость по восприятию: зелёный виден куда сильнее синего
+      sum += (0.2126 * px[o] + 0.7152 * px[o + 1] + 0.0722 * px[o + 2]) / 255;
+    }
+  }
+  return { luma: opaque ? sum / opaque : 1, coverage: total ? opaque / total : 0 };
 }
 
 /**
@@ -61,9 +106,13 @@ function logoImage() {
  * 0 прижимает к её краю, 1 — к противоположному. Поэтому знак не может
  * выехать под интерфейс, куда ни двигай.
  */
-export async function drawLogo(ctx, { width, height, logo }) {
-  if (!logo?.show) return null;
-  const img = await logoImage();
+export async function drawLogo(ctx, { width, height, logo, backdrop }) {
+  // На тёмной подложке цветной знак тонет — там ставится белый. Выбирает
+  // это подложка, а не человек: иначе на половине снимков знак пропадёт.
+  // Подложки нет (прозрачный PNG) — знак остаётся цветным.
+  const white = (backdrop?.coverage ?? 0) > 0.5
+    && (backdrop?.luma ?? 1) < (logo.threshold ?? 0.5);
+  const img = await logoImage(white);
   const box = safeRect(width, height, logo.safe ?? SAFE);
   const side = width * logo.size;
   const x = box.x + (box.width - side) * Math.min(1, Math.max(0, logo.x));
@@ -73,5 +122,5 @@ export async function drawLogo(ctx, { width, height, logo }) {
   ctx.globalAlpha = logo.opacity ?? 1;
   ctx.drawImage(img, x, y, side, side);
   ctx.restore();
-  return { x, y, side };
+  return { x, y, side, white };
 }

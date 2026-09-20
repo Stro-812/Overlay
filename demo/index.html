@@ -104,8 +104,9 @@
 
     <div class="card">
       <h2>Знак S10</h2>
-      <label class="one"><input type="checkbox" id="showLogo"> поставить знак</label>
       <div id="logoSliders"></div>
+      <p class="note">Ставится всегда, ходит внутри безопасной зоны соцсетей.
+      Цветной или белый выбирает сама фотография по её яркости.</p>
     </div>
 
     <div class="card" id="rowsCard">
@@ -228,10 +229,7 @@ function syncMode() {
 for (const b of document.querySelectorAll('#modeCard button')) {
   b.addEventListener('click', () => { state.opts.mode = b.dataset.mode; syncMode(); draw(); });
 }
-$('showLogo').addEventListener('change', () => {
-  state.opts.logo.show = $('showLogo').checked;
-  draw();
-});
+
 
 /* ---------- какие строки рисовать ---------- */
 
