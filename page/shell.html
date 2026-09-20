@@ -1,0 +1,347 @@
+<title>Оверлей забега</title>
+<style>
+  /* Палитра снята с экранов платформы: синий кнопок и цифр, сиреневая
+     заливка блоков, коралловый у главного и зелёный у лёгкого. Тема одна,
+     светлая, — как на сайте; поэтому все цвета проставлены явно, а не
+     отданы на усмотрение системы. */
+  :root {
+    --blue: #1b4ba5;
+    --blue-link: #1f57c4;
+    --blue-press: #163d88;
+    --green: #2f7a3a;
+    --green-lit: #55bd36;
+    --coral: #f26b57;
+    --lav: #e9e9f8;
+    --lav-soft: #f3f3fb;
+    --ink: #14161f;
+    --muted: #737d9a;
+    --line: #d7dbea;
+    --paper: #ffffff;
+    --check-a: #ffffff;
+    --check-b: #e0e4f1;
+    --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 16px/1.45 var(--ui);
+    -webkit-text-size-adjust: 100%;
+  }
+  .topline { block-size: 6px; background: var(--green-lit); }
+  .page { padding: 16px 16px 48px; max-inline-size: 1180px; margin: 0 auto; }
+
+  header { margin-bottom: 20px; }
+  h1 {
+    font-size: 26px; font-weight: 800; letter-spacing: -.01em;
+    margin: 0; text-wrap: balance;
+  }
+  h1 span { color: var(--coral); }
+  .kicker {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 6px; font-weight: 700; color: var(--coral);
+  }
+  .kicker::before {
+    content: ''; inline-size: 9px; block-size: 9px; border-radius: 50%;
+    background: var(--coral); flex: none;
+  }
+  .lede { margin: 10px 0 0; color: var(--muted); font-size: 15px; max-inline-size: 60ch; }
+
+  /* Заголовок с синей полосой под ним — тот же приём, что у разделов сайта. */
+  .section {
+    font-size: 19px; font-weight: 700; color: var(--blue-link);
+    margin: 0 0 7px;
+  }
+  .section::after {
+    content: ''; display: block; block-size: 5px; background: var(--blue);
+    margin-top: 6px; border-radius: 2px;
+  }
+  .block + .block { margin-top: 26px; }
+
+  /* Раскладка: на телефоне обычный поток, чтобы предпросмотр мог прилипнуть —
+     ячейка сетки ровно по высоте содержимого, прилипать там негде. */
+  .layout { display: block; }
+  .data { margin-bottom: 22px; }
+  .stage {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 5;
+    background: var(--paper);
+    padding-block: 8px 14px;
+    margin-block-end: 22px;
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+  @media (min-width: 900px) {
+    .layout {
+      display: grid; gap: 0 28px; align-items: start;
+      grid-template-columns: 360px minmax(0, 1fr);
+      grid-template-areas: "data stage" "controls stage";
+    }
+    .data { grid-area: data; }
+    .controls { grid-area: controls; margin-top: 26px; }
+    .stage {
+      grid-area: stage; position: static; padding: 0; margin: 0;
+      /* без растяжения правая колонка высотой ровно в своё содержимое, и
+         липкому блоку внутри некуда ехать — он уезжает вместе со страницей */
+      align-self: stretch;
+    }
+    .stage-inner { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+  }
+
+  /* Сиреневый блок — основной контейнер содержимого на сайте. */
+  .fill { background: var(--lav); border-radius: 8px; padding: 13px 14px; }
+
+  /* minmax(0, …) обязателен: дорожка «auto» меряется по самому широкому
+     содержимому, и длинное имя файла раздувает колонку так, что она залезает
+     на предпросмотр. С нулевым минимумом имя обрезается многоточием. */
+  .drops { display: grid; gap: 9px; grid-template-columns: minmax(0, 1fr); }
+  .drop {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--lav); border-radius: 8px;
+    padding: 13px 14px; cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .drop:hover, .drop.over { border-color: var(--blue-link); }
+  .drop:focus-within { outline: 3px solid var(--blue-link); outline-offset: 2px; }
+  .drop.ok .what { color: var(--green); font-weight: 600; }
+  .drop input { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
+  .drop .what { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drop .tag { font-size: 13px; font-weight: 600; color: var(--muted); flex: none; }
+
+  /* Поле принимает форму картинки: его пропорции задаёт --ar, которую
+     ставит отрисовка. Иначе у вертикального снимка поле остаётся во всю
+     ширину, оверлей растягивается по нему — и цифры уезжают мимо фотографии
+     на шахматку. Высоту ограничивает --cap: на телефоне картинка иначе
+     занимает весь экран и ползунки уходят под сгиб. */
+  .frame {
+    --cap: 44vh;
+    /* Отношение сторон задаётся точной дробью, а не округлённым числом:
+       у округлённого пропорции поля и картинки расходятся на доли пикселя. */
+    aspect-ratio: var(--ar, 1 / 1);
+    inline-size: min(100%, calc(var(--cap) * var(--arn, 1)));
+    margin-inline: auto;
+    border: 1px solid var(--line); border-radius: 8px;
+    overflow: hidden; position: relative; line-height: 0;
+    background-color: var(--check-a);
+    background-image:
+      linear-gradient(45deg, var(--check-b) 25%, transparent 25%, transparent 75%, var(--check-b) 75%),
+      linear-gradient(45deg, var(--check-b) 25%, transparent 25%, transparent 75%, var(--check-b) 75%);
+    background-size: 24px 24px;
+    background-position: 0 0, 12px 12px;
+  }
+  /* Канва заполняет поле ровно, без object-fit: у «contain» она вписывается
+     по своим пропорциям и не дотягивается до края — вдоль него остаётся
+     полоска шахматки. Искажать тут нечего: поле и так повторяет её пропорции. */
+  .frame canvas {
+    display: block;
+    inline-size: 100%; block-size: 100%;
+  }
+  /* Со снимком под оверлеем прозрачности нет, и шахматке взяться неоткуда.
+     Оставь её — и она проступит сквозь сглаживание скруглённых углов
+     тонкой полоской по краю, будто картинка не дотянулась до рамки. */
+  .frame.on-photo {
+    background-image: none;
+    background-color: var(--paper);
+    border-radius: 0;
+  }
+  @media (min-width: 900px) { .frame { --cap: 72vh; } }
+
+  /* Строка показателей: крупное синее значение, мелкая подпись рядом —
+     как в таблице «Быстро / Медленно / Всего». */
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline;
+    margin: 10px 0 12px; padding: 10px 14px;
+    background: var(--lav-soft); border-radius: 8px;
+  }
+  .meta b {
+    font-size: 19px; font-weight: 700; color: var(--blue-link);
+    font-variant-numeric: tabular-nums;
+  }
+  .meta span { font-size: 14px; color: var(--muted); }
+
+  .acts { display: grid; gap: 9px; }
+  button {
+    inline-size: 100%;
+    font: 600 16px/1.2 var(--ui);
+    padding: 14px 16px;
+    border: 2px solid var(--blue);
+    border-radius: 4px;
+    background: var(--blue);
+    color: #fff;
+    cursor: pointer;
+  }
+  button:not(:disabled):hover { background: var(--blue-press); border-color: var(--blue-press); }
+  button:disabled { background: #a8b2cd; border-color: #a8b2cd; cursor: default; }
+  button:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+  button.quiet { background: var(--paper); color: var(--blue-link); border-color: var(--line); }
+  button.quiet:not(:disabled):hover { background: var(--lav-soft); border-color: var(--blue-link); }
+  button.quiet:disabled { background: var(--paper); color: #a8b2cd; border-color: var(--line); }
+
+  .note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+  .note b { color: var(--ink); }
+  .warn { color: var(--coral); font-weight: 600; }
+  .err { margin: 10px 0 0; font-size: 14px; color: var(--coral); font-weight: 600; white-space: pre-wrap; word-break: break-word; }
+
+  .switch { display: flex; gap: 0; margin-bottom: 12px; }
+  .switch button {
+    inline-size: auto; flex: 1;
+    font: 600 15px/1 var(--ui); padding: 11px 12px;
+    background: var(--paper); color: var(--blue-link);
+    border: 2px solid var(--line); border-radius: 0;
+  }
+  .switch button:first-child { border-start-start-radius: 4px; border-end-start-radius: 4px; }
+  .switch button:last-child { border-start-end-radius: 4px; border-end-end-radius: 4px; border-inline-start: 0; }
+  .switch button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+  /* Рамка безопасной зоны живёт в разметке, а не на канве: в скачанный
+     файл она попасть не должна ни при каких обстоятельствах. */
+  .safe {
+    position: absolute; pointer-events: none;
+    border: 2px dashed rgba(242, 107, 87, .85);
+    inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  }
+  .check {
+    display: flex; gap: 10px; align-items: center;
+    font-size: 14px; color: var(--muted); cursor: pointer; margin: 10px 0 0;
+  }
+  .check input { inline-size: 18px; block-size: 18px; accent-color: var(--blue); flex: none; }
+
+  .toggles { display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); }
+  .toggles label {
+    display: flex; gap: 12px; align-items: center; min-inline-size: 0;
+    padding: 11px 2px; cursor: pointer;
+    border-bottom: 1px solid var(--line);
+  }
+  .toggles label:last-child { border-bottom: 0; }
+  .toggles label.off { color: var(--muted); }
+  .toggles label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toggles label:has(input:disabled) { cursor: default; color: var(--muted); }
+  .toggles input { inline-size: 19px; block-size: 19px; accent-color: var(--blue); flex: none; }
+  .toggles .none { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .swatches { display: flex; gap: 20px; align-items: center; margin-bottom: 16px; font-size: 14px; }
+  .swatches label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  .swatches input {
+    inline-size: 38px; block-size: 28px; padding: 0; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 4px; background: none;
+  }
+
+  .sliders { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+  /* Подзаголовок с точкой — как метка типа тренировки в дневнике. */
+  .group {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 15px; margin: 6px 0 0;
+  }
+  .group::before {
+    content: ''; inline-size: 9px; block-size: 9px; border-radius: 50%;
+    background: currentColor; flex: none;
+  }
+  .group.a { color: var(--coral); }
+  .group.b { color: var(--green); }
+  .group:first-child { margin-top: 0; }
+  .slider label { display: block; font-size: 14px; color: var(--muted); }
+  .slider .line { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 12px; align-items: center; }
+  .slider input { inline-size: 100%; accent-color: var(--blue); }
+  .slider output {
+    font-size: 16px; font-weight: 700; color: var(--blue-link);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="topline"></div>
+<div class="page">
+  <header>
+    <h1>Оверлей <span>забега</span></h1>
+    <p class="kicker">Картинка для соцсетей</p>
+    <p class="lede">Трек и цифры пробежки поверх фотографии. Для примера уже
+    загружены маршрут, цифры полумарафона и разбор интервалов — подставьте
+    свои файлы и снимок.</p>
+  </header>
+
+  <div class="layout">
+    <div class="data">
+      <section class="block">
+        <h2 class="section">Данные</h2>
+        <div class="drops">
+          <label class="drop ok" data-kind="track">
+            <input type="file" id="file-track" accept=".json,application/json">
+            <span class="what">образец маршрута</span><span class="tag">JSON</span>
+          </label>
+          <label class="drop ok" data-kind="stats">
+            <input type="file" id="file-stats" accept=".json,application/json">
+            <span class="what">образец цифр</span><span class="tag">JSON</span>
+          </label>
+          <label class="drop ok" data-kind="intervals">
+            <input type="file" id="file-intervals" accept=".json,application/json">
+            <span class="what">образец интервалов</span><span class="tag">JSON</span>
+          </label>
+          <label class="drop" data-kind="photo">
+            <input type="file" id="file-photo" accept="image/*">
+            <span class="what">Фотография с забега</span><span class="tag">ФОТО</span>
+          </label>
+        </div>
+        <p class="err" id="err" hidden></p>
+      </section>
+    </div>
+
+    <div class="stage">
+      <div class="stage-inner">
+        <div class="switch" id="switch" hidden>
+          <button type="button" class="on" data-mode="intervals">Интервалы</button>
+          <button type="button" data-mode="stats">Общие цифры</button>
+        </div>
+        <div class="frame" id="frame">
+          <canvas id="canvas" aria-label="Предпросмотр оверлея"></canvas>
+          <div class="safe" id="safe" hidden></div>
+        </div>
+        <p class="meta"><span>Размер</span><b id="size">—</b><span id="what">—</span></p>
+        <label class="check"><input type="checkbox" id="showSafe">показать безопасную зону соцсетей</label>
+        <div class="acts">
+          <button id="ready" disabled>Загрузите фотографию</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <section class="block">
+        <h2 class="section">Если накладываете сами</h2>
+        <p class="note" id="hint">Обычно нужна <b>готовая картинка</b> — кнопка
+        под предпросмотром: это фотография с уже наложенным оверлеем, её
+        публикуют как есть. Кнопка ниже отдаёт <b>только оверлей, без
+        фотографии</b>, на прозрачном фоне — она пригодится, если вы собираете
+        картинку в редакторе. По дороге до телефона такой файл легко теряет
+        прозрачность и приходит с шахматкой.</p>
+        <div class="acts" style="margin-top:12px">
+          <button class="quiet" id="save">Скачать PNG без фотографии</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <h2 class="section">Знак S10</h2>
+        <div class="sliders" id="logoSliders"></div>
+        <p class="note">Знак стоит на картинке всегда и ходит только внутри
+        безопасной зоны — под интерфейс сторис он не уедет, куда ни двигай.
+        Цветной он или белый, решает сама фотография: на тёмной подложке
+        цветной знак тонет, поэтому там встаёт белый.</p>
+      </section>
+
+      <section class="block" id="rowsBlock">
+        <h2 class="section">Какие цифры показывать</h2>
+        <div class="toggles" id="rows"></div>
+      </section>
+
+      <section class="block">
+        <h2 class="section">Раскладка</h2>
+        <div class="swatches">
+          <label><input type="color" id="color" value="#1b3a93">основной</label>
+          <label><input type="color" id="accent" value="#ff2d20">акцент</label>
+        </div>
+        <div class="sliders" id="sliders"></div>
+      </section>
+    </div>
+  </div>
+</div>
