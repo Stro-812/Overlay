@@ -56,7 +56,14 @@
                       linear-gradient(45deg, #dfe2e9 25%, transparent 25%, transparent 75%, #dfe2e9 75%);
     background-size: 26px 26px; background-position: 0 0, 13px 13px;
   }
-  .frame canvas { width: 100%; display: block; }
+  /* Ограничиваем высоту: иначе предпросмотр выше экрана, и закреплённая
+     колонка всё равно показывает только его часть. */
+  .frame { display: flex; justify-content: center; }
+  .frame canvas {
+    display: block;
+    width: auto; height: auto;
+    max-width: 100%; max-height: 74vh;
+  }
   pre {
     background: #10131a; color: #dfe4ee; padding: 12px; border-radius: 9px;
     font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; overflow-x: auto; margin: 0;
