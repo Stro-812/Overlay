@@ -11,10 +11,16 @@ import { drawIcon } from './icons.js';
 
 /** @typedef {{ icon?: string, label?: string, value: string|number, unit?: string }} Line */
 
-/** Приводит второй JSON к списку колонок, каким бы видом он ни пришёл. */
-export function columnsOf(intervals) {
+/**
+ * Приводит второй JSON к списку колонок, каким бы видом он ни пришёл.
+ *
+ * `limit` обрезает список: на картинку по умолчанию идут только быстрые
+ * отрезки — медленные интересны в разборе тренировки, но в ленте лишь
+ * занимают половину ширины.
+ */
+export function columnsOf(intervals, limit = 0) {
   const raw = Array.isArray(intervals) ? intervals : intervals?.columns ?? [];
-  return raw
+  const all = raw
     .filter(Boolean)
     .map((col) => ({
       title: col.title ?? '',
@@ -23,6 +29,7 @@ export function columnsOf(intervals) {
       rows: (col.rows ?? []).map((r) => (r && r.value != null && r.value !== '' && r.show !== false ? r : null)),
     }))
     .filter((col) => col.rows.some(Boolean));
+  return limit > 0 ? all.slice(0, limit) : all;
 }
 
 function intervalMetrics(unit) {
@@ -56,10 +63,10 @@ function wrap(ctx, text, max) {
  * @returns {{x: number, y: number, width: number, height: number} | null}
  */
 export function drawIntervals(ctx, intervals, opts) {
-  const cols = columnsOf(intervals);
+  const L = opts.intervals;
+  const cols = columnsOf(intervals, L.columns);
   if (!cols.length) return null;
 
-  const L = opts.intervals;
   const W = opts.width;
   const u = W * L.scale;
   const m = intervalMetrics(u);
@@ -123,7 +130,9 @@ export function drawIntervals(ctx, intervals, opts) {
         const { row, lines } = entry;
         const textX = x + m.icon + m.iconGap;
         const labelTop = y;
-        ctx.fillStyle = L.ink;
+        // подписи и числа идут цветом колонки: иначе выбранный цвет меняет
+        // только значки, а цифры остаются чёрными и тонут на тёмном снимке
+        ctx.fillStyle = L.ink ?? colour;
         ctx.font = labelFont;
         lines.forEach((line, n) => ctx.fillText(line, textX, labelTop + m.label * 0.8 + n * m.labelLine));
 

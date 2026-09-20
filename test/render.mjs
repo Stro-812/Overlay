@@ -195,8 +195,44 @@ const extra = await page.evaluate(async ({ intervals, stats }) => {
   let logoInk = 0;
   for (let i = 3; i < corner.length; i += 4) if (corner[i] > 0) logoInk++;
 
+  // на картинку идёт только колонка быстрых отрезков
+  const { drawIntervals } = await import('/src/intervals.js');
+  const columnBox = (columns) => {
+    const c = document.createElement('canvas');
+    c.width = 1080; c.height = 1350;
+    return drawIntervals(c.getContext('2d'), intervals, {
+      width: 1080, height: 1350, color: '#1b3a93', accent: '#ff2d20', fontFamily: 'Montserrat',
+      intervals: { x: 0.06, y: 0.04, scale: 0.055, colGap: 0.045, rowGap: 0.38,
+                   headGap: 1.5, labelMax: 0.24, columns, ink: null },
+    });
+  };
+  const oneCol = columnBox(1);
+  const allCols = columnBox(0);
+
+  // выбранный цвет должен доставаться и цифрам, не только значкам
+  const painted = (colour) => {
+    const c = document.createElement('canvas');
+    c.width = 1080; c.height = 1350;
+    const ctx2 = c.getContext('2d');
+    drawIntervals(ctx2, intervals, {
+      width: 1080, height: 1350, color: colour, accent: '#ff2d20', fontFamily: 'Montserrat',
+      intervals: { x: 0.06, y: 0.04, scale: 0.055, colGap: 0.045, rowGap: 0.38,
+                   headGap: 1.5, labelMax: 0.24, columns: 1, ink: null },
+    });
+    const { data } = ctx2.getImageData(0, 0, 1080, 1350);
+    let hit = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 200 && data[i] > 230 && data[i + 1] > 230 && data[i + 2] > 230) hit++;
+    }
+    return hit;
+  };
+  const whiteInk = painted('#ffffff');
+  const blueInk = painted('#1b3a93');
+
   return { auto, forced, onlyIntervals, onlyStats, вЗоне: corners.every(Boolean),
-           dark, light, none, splitTop, splitBottom, logoInk };
+           dark, light, none, splitTop, splitBottom, logoInk,
+           oneCol: Math.round(oneCol.width), allCols: Math.round(allCols.width),
+           whiteInk, blueInk };
 }, { intervals, stats });
 
 console.log(`интервалы: сами ${extra.auto} точек, принудительно цифры ${extra.forced}`);
@@ -204,6 +240,8 @@ console.log(`знак внутри безопасной зоны во всех �
 console.log(`вариант знака: тёмная подложка → ${extra.dark.white ? 'белый' : 'цветной'}`
   + ` (яркость ${extra.dark.luma}), светлая → ${extra.light.white ? 'белый' : 'цветной'}`
   + ` (яркость ${extra.light.luma}), без подложки → ${extra.none.white ? 'белый' : 'цветной'}`);
+console.log(`колонки: одна ${extra.oneCol}px против всех ${extra.allCols}px;`
+  + ` белым закрашено ${extra.whiteInk} точек, синим ${extra.blueInk}`);
 console.log(`кадр «тёмный верх, светлый низ»: сверху → ${extra.splitTop.white ? 'белый' : 'цветной'}`
   + ` (${extra.splitTop.luma}), снизу → ${extra.splitBottom.white ? 'белый' : 'цветной'} (${extra.splitBottom.luma})`);
 
@@ -260,5 +298,8 @@ if (check) {
   if (!extra.logoInk) fail('знак не нарисовался без настроек — он обязателен');
   if (!extra.splitTop.white) fail('в тёмном верху кадра знак остался цветным');
   if (extra.splitBottom.white) fail('в светлом низу кадра знак стал белым');
+  if (extra.oneCol >= extra.allCols * 0.7) fail('вторая колонка интервалов не убралась');
+  if (extra.whiteInk < 5000) fail('белый основной цвет не достался цифрам интервалов');
+  if (extra.blueInk > 500) fail('при синем цвете на картинке нашлось белое');
   if (!process.exitCode) console.log('проверки прошли');
 }
