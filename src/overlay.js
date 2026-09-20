@@ -126,10 +126,12 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
     ? Math.ceil(width * opts.stats.y * 2 + rowHeight * rows.length)
     : opts.height;
 
-  // выставление размера само очищает канву, поэтому при keep его не трогаем
+  // размер трогаем, только когда он и правда сменился: перевыделять канву
+  // в восемнадцать миллионов точек на каждом кадре незачем. Чистит её
+  // следующий clearRect, а не смена размера
   if (!keep) {
-    canvas.width = width;
-    canvas.height = height;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
   }
   const ctx = canvas.getContext('2d');
   if (!keep) ctx.clearRect(0, 0, width, height);
@@ -221,17 +223,31 @@ export async function renderOverlay(data, options) {
   });
 }
 
+// Разбор снимка стоит несколько миллисекунд, а при перетаскивании ползунка
+// кадры идут потоком — держим последний разобранный. Слот один: снимок в
+// работе всегда один, а копить их значит копить и память под них.
+let lastPhoto = { key: null, image: null };
+
 /** Приводит фотографию к тому, что умеет рисовать канва. */
 async function loadPhoto(photo) {
-  if (typeof photo === 'string') {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';   // иначе канва «пачкается» и toBlob откажет
-    img.src = photo;
-    await img.decode();
-    return img;
+  if (typeof photo !== 'string' && !(photo instanceof Blob)) {
+    return photo;                     // уже <img>, <canvas> или ImageBitmap
   }
-  if (photo instanceof Blob) return createImageBitmap(photo);
-  return photo;                       // уже <img>, <canvas> или ImageBitmap
+  if (lastPhoto.key === photo) return lastPhoto.image;
+
+  let image;
+  if (typeof photo === 'string') {
+    image = new Image();
+    image.crossOrigin = 'anonymous';  // иначе канва «пачкается» и toBlob откажет
+    image.src = photo;
+    await image.decode();
+  } else {
+    image = await createImageBitmap(photo);
+  }
+  // прежний снимок больше не нужен: у ImageBitmap память держится до close()
+  lastPhoto.image?.close?.();
+  lastPhoto = { key: photo, image };
+  return image;
 }
 
 /**
@@ -258,8 +274,10 @@ export async function composeToCanvas(data, options, canvas) {
   const width = options.width ?? image.naturalWidth ?? image.width;
   const height = options.height ?? image.naturalHeight ?? image.height;
 
-  canvas.width = width;
-  canvas.height = height;
+  // смена размера сама по себе перевыделяет канву и стирает её; при
+  // неизменном размере это лишняя работа на каждом кадре
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
   canvas.getContext('2d').drawImage(image, 0, 0, width, height);
 
   // оверлей рисуем поверх на той же канве: своей она её не очищает,

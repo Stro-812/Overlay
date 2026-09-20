@@ -182,6 +182,18 @@ const LOGO = [
 const show = (value, unit) => (unit ? Math.round(value) + unit : (+value).toFixed(3));
 
 const state = { track: null, stats: null, intervals: null, photo: null, opts: structuredClone(DEFAULTS) };
+
+/* Предел стороны предпросмотра: телефонный снимок — восемнадцать миллионов
+   точек, перерисовывать их на каждое движение ползунка незачем. Раскладка
+   задана в долях ширины, поэтому уменьшенный кадр выглядит так же. В файл
+   картинка уходит в полном размере. */
+const PREVIEW_MAX = 1400;
+function previewOpts() {
+  const { width, height } = state.opts;
+  const k = Math.min(1, PREVIEW_MAX / Math.max(width, height));
+  if (k === 1) return state.opts;
+  return { ...state.opts, width: Math.round(width * k), height: Math.round(height * k) };
+}
 const $ = (id) => document.getElementById(id);
 const at = (obj, key) => key.split('.').reduce((o, k) => o[k], obj);
 const setAt = (obj, key, v) => {
@@ -341,15 +353,17 @@ async function draw() {
     try {
       // со снимком рисуем ровно то, что уйдёт в файл: иначе знак не сможет
       // подобрать себе цвет по фотографии, которой на канве нет
-      if (state.photo) await composeToCanvas(data(), state.opts, $('canvas'));
-      else await renderToCanvas(data(), state.opts, $('canvas'));
+      const preview = previewOpts();
+      if (state.photo) await composeToCanvas(data(), preview, $('canvas'));
+      else await renderToCanvas(data(), preview, $('canvas'));
       $('save').disabled = false;
       // готовую картинку собирать не из чего, пока нет фотографии
       $('ready').disabled = !state.photo;
       $('ready').textContent = state.photo
         ? 'Скачать готовую картинку'
         : 'Загрузите фотографию для готовой картинки';
-      const { width, height } = $('canvas');
+      // в подписи показываем размер будущего файла, а не уменьшенного предпросмотра
+      const { width, height } = state.opts;
       $('status').textContent = `${width}×${height} · `
         + (state.track ? 'трек и цифры' : 'только цифры, трека нет');
     } catch (e) {

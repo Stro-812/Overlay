@@ -229,7 +229,26 @@ const extra = await page.evaluate(async ({ intervals, stats }) => {
   const whiteInk = painted('#ffffff');
   const blueInk = painted('#1b3a93');
 
-  return { auto, forced, onlyIntervals, onlyStats, вЗоне: corners.every(Boolean),
+  // Снимок не должен разбираться заново на каждом кадре: при перетаскивании
+  // ползунка это была главная статья расходов. Считаем настоящие вызовы
+  // decode, а не время — так проверка не зависит от скорости машины.
+  const { composeToCanvas } = await import('/src/overlay.js');
+  const realDecode = HTMLImageElement.prototype.decode;
+  let decodes = 0;
+  HTMLImageElement.prototype.decode = function counted(...args) {
+    decodes++;
+    return realDecode.apply(this, args);
+  };
+  const dot = 'data:image/svg+xml;charset=utf-8,'
+    + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="80" height="80" fill="#888"/></svg>');
+  const reused = document.createElement('canvas');
+  for (let i = 0; i < 5; i++) {
+    await composeToCanvas({ stats, photo: dot }, { width: 200, height: 200 }, reused);
+  }
+  HTMLImageElement.prototype.decode = realDecode;
+
+  return { decodes,
+           auto, forced, onlyIntervals, onlyStats, вЗоне: corners.every(Boolean),
            dark, light, none, splitTop, splitBottom, logoInk,
            oneCol: Math.round(oneCol.width), allCols: Math.round(allCols.width),
            whiteInk, blueInk };
@@ -240,6 +259,7 @@ console.log(`знак внутри безопасной зоны во всех �
 console.log(`вариант знака: тёмная подложка → ${extra.dark.white ? 'белый' : 'цветной'}`
   + ` (яркость ${extra.dark.luma}), светлая → ${extra.light.white ? 'белый' : 'цветной'}`
   + ` (яркость ${extra.light.luma}), без подложки → ${extra.none.white ? 'белый' : 'цветной'}`);
+console.log(`снимок разобран ${extra.decodes} раз на пять кадров`);
 console.log(`колонки: одна ${extra.oneCol}px против всех ${extra.allCols}px;`
   + ` белым закрашено ${extra.whiteInk} точек, синим ${extra.blueInk}`);
 console.log(`кадр «тёмный верх, светлый низ»: сверху → ${extra.splitTop.white ? 'белый' : 'цветной'}`
@@ -301,5 +321,6 @@ if (check) {
   if (extra.oneCol >= extra.allCols * 0.7) fail('вторая колонка интервалов не убралась');
   if (extra.whiteInk < 5000) fail('белый основной цвет не достался цифрам интервалов');
   if (extra.blueInk > 500) fail('при синем цвете на картинке нашлось белое');
+  if (extra.decodes !== 1) fail(`снимок разобран ${extra.decodes} раз на пять кадров — разбор не кэшируется`);
   if (!process.exitCode) console.log('проверки прошли');
 }
