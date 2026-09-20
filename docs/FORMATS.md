@@ -33,7 +33,7 @@
     { "icon": "stopwatch", "value": "5:07",  "unit": "min/km" },
     { "icon": "mountain",  "value": "304",   "unit": "m" },
     { "icon": "heart",     "value": "144",   "unit": "bpm" },
-    { "icon": "metronome", "value": "168",   "unit": "", "accent": true }
+    { "icon": "metronome", "value": "168",   "unit": "step/min", "accent": true }
   ],
   "track": { "show": true, "accent": true }
 }
