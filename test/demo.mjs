@@ -25,6 +25,11 @@ await page.setInputFiles('input[data-for=track]', existsSync(real)
   ? real
   : path.join(root, 'test/fixtures/track.sample.json'));
 await page.setInputFiles('input[data-for=stats]', path.join(root, 'test/fixtures/stats.json'));
+await page.setInputFiles('input[data-for=intervals]', path.join(root, 'test/fixtures/intervals.json'));
+// второй JSON поднимает переключатель и по умолчанию выбирает интервалы
+await page.waitForFunction(() => !document.getElementById('modeCard').hidden);
+const chosen = await page.textContent('#modeCard button.on');
+await page.locator('#showLogo').check();
 if (photo) await page.setInputFiles('input[data-for=photo]', photo);
 
 await page.waitForFunction(() => !document.getElementById('save').disabled);
@@ -54,6 +59,11 @@ if (photo) await page.locator('#frame').screenshot({ path: path.join(root, 'test
 await close();
 
 console.log('статус страницы:', status);
+console.log('переключатель выбрал:', chosen);
+if (chosen.trim() !== 'Интервалы') {
+  console.error('ПРОВАЛ: при двух JSON по умолчанию выбраны не интервалы');
+  process.exitCode = 1;
+}
 if (error) console.error('страница показала ошибку:', error);
 for (const p of problems) console.error('проблема:', p);
 if (error || problems.length) process.exitCode = 1;

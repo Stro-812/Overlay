@@ -21,6 +21,7 @@ const trackFile = ['test/fixtures/track.json', 'test/fixtures/track.sample.json'
   .map((rel) => path.join(root, rel));
 const track = JSON.parse(await readFile(trackFile[0], 'utf8').catch(() => readFile(trackFile[1], 'utf8')));
 const stats = JSON.parse(await readFile(path.join(root, 'test/fixtures/stats.json'), 'utf8'));
+const intervals = JSON.parse(await readFile(path.join(root, 'test/fixtures/intervals.json'), 'utf8'));
 
 await mkdir(out, { recursive: true });
 
@@ -127,6 +128,48 @@ const knobs = await page.evaluate(async ({ track, stats }) => {
   };
 }, { track, stats });
 
+/* ---------- интервалы и знак ---------- */
+
+const extra = await page.evaluate(async ({ intervals, stats }) => {
+  const { renderToCanvas } = await import('/src/overlay.js');
+  const { safeRect, drawLogo, SAFE } = await import('/src/logo.js');
+
+  const ink = async (data, options) => {
+    const canvas = document.createElement('canvas');
+    await renderToCanvas(data, options, canvas);
+    const { data: px } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let on = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] > 0) on++;
+    return on;
+  };
+
+  // второй JSON есть — по умолчанию должны рисоваться интервалы
+  const auto = await ink({ stats, intervals }, { width: 1080, height: 1350 });
+  const forced = await ink({ stats, intervals }, { width: 1080, height: 1350, mode: 'stats' });
+  const onlyIntervals = await ink({ intervals }, { width: 1080, height: 1350 });
+  const onlyStats = await ink({ stats }, { width: 1080, height: 1350 });
+
+  // знак не должен вылезать за безопасную зону ни в одном углу
+  const box = safeRect(1080, 1350, SAFE);
+  const corners = [];
+  for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1], [-5, 9]]) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080; canvas.height = 1350;
+    const spot = await drawLogo(canvas.getContext('2d'),
+      { width: 1080, height: 1350, logo: { show: true, x, y, size: 0.16 } });
+    corners.push([
+      spot.x >= box.x - 0.5,
+      spot.y >= box.y - 0.5,
+      spot.x + spot.side <= box.x + box.width + 0.5,
+      spot.y + spot.side <= box.y + box.height + 0.5,
+    ].every(Boolean));
+  }
+  return { auto, forced, onlyIntervals, onlyStats, вЗоне: corners.every(Boolean) };
+}, { intervals, stats });
+
+console.log(`интервалы: сами ${extra.auto} точек, принудительно цифры ${extra.forced}`);
+console.log(`знак внутри безопасной зоны во всех углах: ${extra.вЗоне ? 'да' : 'НЕТ'}`);
+
 console.log(`поворот: ${knobs.upright.join('×')} → ${knobs.turned.join('×')} при 90°`);
 console.log(`строки: все ${knobs.all.height}px, со скрытой ${knobs.hidden.height}px`);
 console.log(`test/out/composite.png — ${composite.width}×${composite.height}, `
@@ -168,5 +211,10 @@ if (check) {
   if (knobs.hidden.height >= knobs.all.height) fail('show: false не убрал строку');
   if (knobs.hidden.on >= knobs.all.on) fail('скрытая строка всё равно нарисовалась');
   if (knobs.empty.height !== knobs.hidden.height) fail('пустое значение и show: false убирают строку по-разному');
+
+  if (extra.auto !== extra.onlyIntervals) fail('при двух JSON по умолчанию нарисовались не интервалы');
+  if (extra.forced !== extra.onlyStats) fail('mode: stats не вернул общие цифры');
+  if (extra.auto === extra.forced) fail('интервалы и общие цифры дали одинаковую картинку');
+  if (!extra.вЗоне) fail('знак вышел за безопасную зону');
   if (!process.exitCode) console.log('проверки прошли');
 }

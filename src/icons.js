@@ -62,6 +62,48 @@ export const ICONS = {
       'M16.1 14.8 L18.9 13.6',                 // грузик
     ],
   },
+
+  /* ---------- интервалы ---------- */
+
+  /** Сплошное сердце: в разборе интервалов пульс залит, а не обведён. */
+  'heart-solid': {
+    solid: [
+      'M16 27.4 C16 27.4 3.4 19.8 3.4 12.1 C3.4 8.1 6.5 5.3 10.1 5.3 '
+        + 'C12.9 5.3 15.2 7.1 16 9 C16.8 7.1 19.1 5.3 21.9 5.3 '
+        + 'C25.5 5.3 28.6 8.1 28.6 12.1 C28.6 19.8 16 27.4 16 27.4 Z',
+    ],
+  },
+
+  speed: {
+    paths: [
+      // корпус приборной шкалы: скруглённый купол на плоском основании
+      'M5.4 24.8 C2.2 20.2 2.8 12.6 8 9 C12.9 5.6 19.1 5.6 24 9 '
+        + 'C29.2 12.6 29.8 20.2 26.6 24.8 Z',
+      'M12.6 21.4 L21.6 11.6',                 // стрелка
+    ],
+    circles: [[12.6, 21.4, 1.1]],
+  },
+
+  delta: {
+    paths: ['M16 6 L28.4 25.6 L3.6 25.6 Z'],
+  },
+
+  distance: {
+    paths: [
+      'M9 21.6 L9 13 C9 8.8 15 8.8 15 13 L15 19 C15 23.2 21 23.2 21 19 L21 10.6',
+      'M5.8 18.4 L9 22.2 L12.2 18.4',          // стрелка вниз
+      'M17.8 13.8 L21 10 L24.2 13.8',          // стрелка вверх
+    ],
+  },
+
+  repeat: {
+    // круг из сплошной и пунктирной дуги — как счётчик повторов на экране
+    arcs: [
+      [16, 17.4, 10, -1.15, 2.6, false],
+      [16, 17.4, 10, 2.75, 4.95, true],
+    ],
+    paths: ['M17.2 6.2 L20.6 8.3 L18.2 11.4'], // остриё точно на конце дуги
+  },
 };
 
 /** Рисует иконку в квадрат size×size с левым верхним углом в (x, y). */
@@ -79,7 +121,20 @@ export function drawIcon(ctx, name, x, y, size, { color, width }) {
   ctx.lineJoin = 'round';
   ctx.fillStyle = 'transparent';
 
+  for (const d of icon.solid ?? []) {
+    ctx.fillStyle = color;
+    ctx.fill(new Path2D(d));
+    ctx.fillStyle = 'transparent';
+  }
   for (const d of icon.paths ?? []) ctx.stroke(new Path2D(d));
+  for (const [cx, cy, r, from, to, dashed] of icon.arcs ?? []) {
+    const arc = new Path2D();
+    arc.arc(cx, cy, r, from, to);
+    // пунктир задаём в тех же единицах сетки 32×32, что и остальные контуры
+    if (dashed) ctx.setLineDash([2.6, 2.8]);
+    ctx.stroke(arc);
+    ctx.setLineDash([]);
+  }
   for (const [cx, cy, r] of icon.circles ?? []) {
     const circle = new Path2D();
     circle.arc(cx, cy, r, 0, Math.PI * 2);

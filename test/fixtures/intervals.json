@@ -1,0 +1,29 @@
+{
+  "columns": [
+    {
+      "title": "Быстро",
+      "rows": [
+        { "icon": "stopwatch", "label": "среднее время",      "value": "00:38" },
+        { "icon": "speed",     "label": "средний темп",       "value": "03:10" },
+        { "icon": "delta",     "label": "разброс времени",    "value": "00:01" },
+        { "icon": "heart-solid", "label": "средний пульс",    "value": "153" },
+        { "icon": "distance",  "label": "средняя дистанция",  "value": "0.2", "unit": "км" },
+        { "icon": "metronome", "label": "каденс",             "value": "172" },
+        { "icon": "repeat",    "label": "количество интервалов", "value": "15" }
+      ]
+    },
+    {
+      "title": "Медленно",
+      "accent": true,
+      "rows": [
+        { "icon": "stopwatch", "label": "среднее время",      "value": "00:46" },
+        { "icon": "speed",     "label": "средний темп",       "value": "03:50" },
+        { "icon": "delta",     "label": "разброс времени",    "value": "00:01" },
+        { "icon": "heart-solid", "label": "средний пульс",    "value": "130" },
+        { "icon": "distance",  "label": "средняя дистанция",  "value": "0.2", "unit": "км" },
+        null,
+        { "icon": "repeat",    "label": "количество интервалов", "value": "14" }
+      ]
+    }
+  ]
+}

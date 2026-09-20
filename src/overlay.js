@@ -17,6 +17,8 @@
  */
 import { trackPath } from './track.js';
 import { drawIcon } from './icons.js';
+import { drawIntervals } from './intervals.js';
+import { drawLogo } from './logo.js';
 
 /** @typedef {{ icon?: string, value: string|number, unit?: string, accent?: boolean, show?: boolean }} Row */
 /** @typedef {{ track?: unknown, stats: { rows: Row[] } | Row[] }} OverlayData */
@@ -32,6 +34,20 @@ export const DEFAULTS = {
   stats: { x: 0.06, y: 0.08, scale: 0.1, gap: 1.32 },
   /** раскладка контура маршрута */
   track: { show: true, x: 0.34, y: 0.3, size: 0.62, rotate: 0, accent: true, weight: 0.009, opacity: 1 },
+  /** что показывать: 'stats' — общие цифры забега, 'intervals' — разбор
+   *  интервалов. Пусто — выбирается само: интервалы, если они переданы */
+  mode: null,
+  /** раскладка разбора интервалов */
+  intervals: {
+    // кегль подобран так, чтобы семь строк с заголовком помещались
+    // в квадрат 1080×1080 — на вертикальном снимке места ещё больше
+    x: 0.06, y: 0.04, scale: 0.055,
+    colGap: 0.045, rowGap: 0.38, headGap: 1.5,
+    labelMax: 0.24, ink: '#111111',
+  },
+  /** знак: x и y — доли свободного хода внутри безопасной зоны соцсетей.
+   *  По умолчанию правый верхний угол — там свободно при любой раскладке цифр */
+  logo: { show: false, x: 1, y: 0, size: 0.16, opacity: 1 },
 };
 
 const GOOGLE_FONT = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&display=swap';
@@ -59,7 +75,9 @@ async function ensureFont(family, loadFont) {
 
 function settings(options = {}, stats) {
   const out = { ...DEFAULTS, ...options };
-  out.stats = { ...DEFAULTS.stats, ...options.stats };
+  for (const key of ['stats', 'intervals', 'logo']) {
+    out[key] = { ...DEFAULTS[key], ...options[key] };
+  }
   // второй JSON может сам сказать, показывать ли маршрут, — это свойство забега,
   // а не раскладки: у трека по стадиону показывать нечего
   out.track = { ...DEFAULTS.track, ...options.track, ...(Array.isArray(stats) ? {} : stats?.track) };
@@ -96,7 +114,9 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
   const rowHeight = m.value * opts.stats.gap;
 
   // «auto» — высота ровно под столбик цифр: удобно, когда маршрут не нужен
-  const auto = opts.height === 'auto';
+  // «auto» подгоняет высоту под столбик цифр; у интервалов две колонки,
+  // и такой подгонки для них нет
+  const auto = opts.height === 'auto' && !data.intervals;
   const height = auto
     ? Math.ceil(width * opts.stats.y * 2 + rowHeight * rows.length)
     : opts.height;
@@ -133,7 +153,14 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
     }
   }
 
-  /* ---------- столбик цифр ---------- */
+  /* ---------- разбор интервалов или столбик цифр ---------- */
+
+  const mode = opts.mode ?? (data.intervals ? 'intervals' : 'stats');
+  if (mode === 'intervals' && data.intervals) {
+    drawIntervals(ctx, data.intervals, { ...opts, width, height });
+    await drawLogo(ctx, { width, height, logo: opts.logo });
+    return canvas;
+  }
 
   // при «auto» отступ сверху считается от ширины: высота ведь и зависит от него
   let y = (auto ? width : height) * opts.stats.y;
@@ -164,6 +191,7 @@ export async function renderToCanvas(data, options, canvas, { keep = false } = {
     y += rowHeight;
   }
 
+  await drawLogo(ctx, { width, height, logo: opts.logo });
   return canvas;
 }
 

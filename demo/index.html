@@ -30,6 +30,8 @@
   .row { display: grid; grid-template-columns: 1fr 58px; gap: 8px; align-items: center; margin-bottom: 7px; font-size: 13px; }
   .row input[type=range] { width: 100%; }
   .row output { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .one { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; margin-bottom: 8px; }
+  button.ghost.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   .toggles { display: grid; gap: 6px; }
   .toggles label { display: flex; gap: 9px; align-items: center; font-size: 13px; cursor: pointer; }
   .toggles label.off { color: var(--muted); }
@@ -81,6 +83,10 @@
         <input type="file" accept=".json,application/json" data-for="stats">
         <span>Цифры забега</span>
       </label>
+      <label class="file" data-drop="intervals">
+        <input type="file" accept=".json,application/json" data-for="intervals">
+        <span>Параметры интервалов — если есть</span>
+      </label>
       <label class="file" data-drop="photo">
         <input type="file" accept="image/*" data-for="photo">
         <span>Фотография — только для примерки</span>
@@ -88,7 +94,21 @@
       <div class="err" id="err" hidden></div>
     </div>
 
+    <div class="card" id="modeCard" hidden>
+      <h2>Что рисовать</h2>
+      <div class="acts">
+        <button class="ghost on" data-mode="intervals">Интервалы</button>
+        <button class="ghost" data-mode="stats">Общие цифры</button>
+      </div>
+    </div>
+
     <div class="card">
+      <h2>Знак S10</h2>
+      <label class="one"><input type="checkbox" id="showLogo"> поставить знак</label>
+      <div id="logoSliders"></div>
+    </div>
+
+    <div class="card" id="rowsCard">
       <h2>Строки</h2>
       <div class="toggles" id="rows"></div>
     </div>
@@ -126,23 +146,43 @@
 
 <script type="module">
 import { renderToCanvas, renderOverlay, renderComposite, DEFAULTS } from '../src/overlay.js';
+import { columnsOf } from '../src/intervals.js';
+import { SAFE } from '../src/logo.js';
 
-const SLIDERS = [
-  ['stats.x',      'цифры слева',   0,    1,    0.005],
-  ['stats.y',      'цифры сверху',  0,    1,    0.005],
-  ['stats.scale',  'кегль цифр',    0.04, 0.2,  0.002],
-  ['stats.gap',    'шаг строк',     1,    2,    0.01],
+const TRACK = [
   ['track.x',      'трек слева',    0,    1,    0.005],
   ['track.y',      'трек сверху',   0,    1,    0.005],
   ['track.size',   'размер трека',  0.1,  1,    0.005],
   ['track.rotate', 'поворот',       0,    360,  1,    '°'],
   ['track.weight', 'толщина линии', 0.002, 0.03, 0.001],
 ];
+const SETS = {
+  stats: [
+    ['stats.x',     'цифры слева',  0,    1,    0.005],
+    ['stats.y',     'цифры сверху', 0,    1,    0.005],
+    ['stats.scale', 'кегль цифр',   0.04, 0.2,  0.002],
+    ['stats.gap',   'шаг строк',    1,    2,    0.01],
+    ...TRACK,
+  ],
+  intervals: [
+    ['intervals.x',      'колонки слева',   0,    1,    0.005],
+    ['intervals.y',      'колонки сверху',  0,    1,    0.005],
+    ['intervals.scale',  'кегль',           0.03, 0.12, 0.002],
+    ['intervals.colGap', 'между колонками', 0,    0.2,  0.005],
+    ['intervals.rowGap', 'шаг строк',       0,    1.2,  0.02],
+    ...TRACK,
+  ],
+};
+const LOGO = [
+  ['logo.size', 'размер знака', 0.05, 0.4, 0.005],
+  ['logo.x',    'знак слева',   0,    1,   0.01],
+  ['logo.y',    'знак сверху',  0,    1,   0.01],
+];
 
 /** Доли показываем с точностью до тысячных, градусы — целыми. */
 const show = (value, unit) => (unit ? Math.round(value) + unit : (+value).toFixed(3));
 
-const state = { track: null, stats: null, photo: null, opts: structuredClone(DEFAULTS) };
+const state = { track: null, stats: null, intervals: null, photo: null, opts: structuredClone(DEFAULTS) };
 const $ = (id) => document.getElementById(id);
 const at = (obj, key) => key.split('.').reduce((o, k) => o[k], obj);
 const setAt = (obj, key, v) => {
@@ -152,7 +192,9 @@ const setAt = (obj, key, v) => {
 
 /* ---------- ползунки ---------- */
 
-for (const [key, title, min, max, step, unit] of SLIDERS) {
+function buildSliders(list, box) {
+  box.replaceChildren();
+  for (const [key, title, min, max, step, unit] of list) {
   const row = document.createElement('div');
   row.className = 'row';
   row.innerHTML = `<label>${title}<input type="range" min="${min}" max="${max}" step="${step}"></label><output></output>`;
@@ -165,8 +207,31 @@ for (const [key, title, min, max, step, unit] of SLIDERS) {
     out.textContent = show(input.value, unit);
     draw();
   });
-  $('sliders').append(row);
+  box.append(row);
+  }
 }
+
+/* ---------- какой JSON рисовать ---------- */
+
+const mode = () => state.opts.mode ?? (state.intervals ? 'intervals' : 'stats');
+
+function syncMode() {
+  $('modeCard').hidden = !state.intervals;
+  const active = mode();
+  for (const b of document.querySelectorAll('#modeCard button')) {
+    b.classList.toggle('on', b.dataset.mode === active);
+  }
+  $('rowsCard').hidden = active === 'intervals';
+  buildSliders(SETS[active], $('sliders'));
+}
+
+for (const b of document.querySelectorAll('#modeCard button')) {
+  b.addEventListener('click', () => { state.opts.mode = b.dataset.mode; syncMode(); draw(); });
+}
+$('showLogo').addEventListener('change', () => {
+  state.opts.logo.show = $('showLogo').checked;
+  draw();
+});
 
 /* ---------- какие строки рисовать ---------- */
 
@@ -229,8 +294,12 @@ async function take(kind, file) {
       if (kind === 'stats' && !Array.isArray(parsed) && !Array.isArray(parsed.rows)) {
         throw new Error('в цифрах нет массива rows');
       }
+      if (kind === 'intervals' && !columnsOf(parsed).length) {
+        throw new Error('в интервалах нет колонок с данными');
+      }
       state[kind] = parsed;
       if (kind === 'stats') renderRows();
+      if (kind === 'intervals') { state.opts.mode = null; syncMode(); }
     }
     label.classList.add('ok');
     label.querySelector('span').textContent = file.name;
@@ -263,7 +332,7 @@ let pending = null;
 
 async function draw() {
   snippet();
-  if (!state.stats) {
+  if (!state.stats && !state.intervals) {
     $('save').disabled = $('ready').disabled = true;
     return;
   }
@@ -325,7 +394,7 @@ function save(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-const data = () => ({ track: state.track, stats: state.stats, photo: state.photo });
+const data = () => ({ track: state.track, stats: state.stats, intervals: state.intervals, photo: state.photo });
 
 $('save').addEventListener('click', async () => {
   save(await renderOverlay(data(), state.opts), 'overlay.png');
@@ -335,6 +404,8 @@ $('ready').addEventListener('click', async () => {
   save(await renderComposite(data(), state.opts), 'zabeg.jpg');
 });
 
+buildSliders(LOGO, $('logoSliders'));
+syncMode();
 renderRows();
 snippet();
 </script>
